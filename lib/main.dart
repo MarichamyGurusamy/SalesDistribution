@@ -4,6 +4,7 @@ import 'screens/home_screen.dart';
 import 'screens/products_screen.dart';
 import 'screens/orders_screen.dart';
 import 'screens/customers_screen.dart';
+import 'screens/visits_screen.dart';
 
 void main() {
   runApp(SalesDistributionApp());
@@ -78,6 +79,7 @@ class SalesDistributionApp extends StatelessWidget {
         '/products': (context) => ProductsScreen(),
           '/orders': (context) => OrdersScreen(),
           '/customers': (context) => CustomersScreen(),
+          '/visits': (context) => VisitsScreen(visits: []),
       },
     );
   }

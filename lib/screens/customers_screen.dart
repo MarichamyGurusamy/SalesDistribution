@@ -62,7 +62,18 @@ class _CustomersScreenState extends State<CustomersScreen> {
                         Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
                           Text('Paid: ₹${_totalPaidFor(customer).toStringAsFixed(2)}', style: TextStyle(fontSize: 14, color: Colors.green[700], fontWeight: FontWeight.w600)),
                           Text('Due: ₹${_totalPendingFor(customer).toStringAsFixed(2)}', style: TextStyle(fontSize: 12, color: Colors.red[700])),
-                        ])
+                          ]),
+                          SizedBox(width: 8),
+                          ElevatedButton(
+                            onPressed: () async {
+                              final changed = await _showEditCustomerDialog(customer);
+                              if (changed == true) {
+                                setState(() {});
+                                setStateSheet(() {});
+                              }
+                            },
+                            child: Text('Edit Details'),
+                          )
                       ],
                     ),
                   ),
@@ -186,6 +197,71 @@ class _CustomersScreenState extends State<CustomersScreen> {
     return result;
   }
 
+  Future<bool?> _showEditCustomerDialog(String customer) async {
+    // Pre-fill from the first order that has non-empty values
+    final orders = _ordersFor(customer);
+    String? initName;
+    String? initPhone;
+    String? initAddress;
+    for (final o in orders) {
+      if ((initName == null || initName.isEmpty) && (o.customerName != null && o.customerName!.isNotEmpty)) initName = o.customerName;
+      if ((initPhone == null || initPhone.isEmpty) && (o.phone != null && o.phone!.isNotEmpty)) initPhone = o.phone;
+      if ((initAddress == null || initAddress.isEmpty) && (o.address != null && o.address!.isNotEmpty)) initAddress = o.address;
+      if ((initName != null && initName.isNotEmpty) || (initPhone != null && initPhone.isNotEmpty) || (initAddress != null && initAddress.isNotEmpty)) break;
+    }
+
+    final nameController = TextEditingController(text: initName ?? '');
+    final phoneController = TextEditingController(text: initPhone ?? '');
+    final addressController = TextEditingController(text: initAddress ?? '');
+    bool changed = false;
+
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Edit Customer Details'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Shop: $customer', style: TextStyle(fontWeight: FontWeight.bold)),
+              SizedBox(height: 12),
+              TextField(controller: nameController, decoration: InputDecoration(labelText: 'Contact person')),
+              SizedBox(height: 8),
+              TextField(controller: phoneController, keyboardType: TextInputType.phone, decoration: InputDecoration(labelText: 'Phone')),
+              SizedBox(height: 8),
+              TextField(controller: addressController, decoration: InputDecoration(labelText: 'Address'), maxLines: 2),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Cancel')),
+          ElevatedButton(
+            onPressed: () {
+              final n = nameController.text.trim();
+              final p = phoneController.text.trim();
+              final a = addressController.text.trim();
+              for (final o in orders) {
+                if (n.isNotEmpty) o.customerName = n;
+                if (p.isNotEmpty) o.phone = p;
+                if (a.isNotEmpty) o.address = a;
+              }
+              changed = true;
+              Navigator.pop(ctx);
+            },
+            child: Text('Save'))
+        ],
+      ),
+    );
+
+    try {
+      nameController.dispose();
+      phoneController.dispose();
+      addressController.dispose();
+    } catch (_) {}
+
+    return changed;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -269,16 +345,14 @@ class _CustomersScreenState extends State<CustomersScreen> {
     required IconData icon,
     Color color = const Color(0xFFE23744),
   }) {
-    return Expanded(
-      child: Column(
-        children: [
-          Icon(icon, size: 18, color: color.withOpacity(0.7)),
-          SizedBox(height: 4),
-          Text(label, style: TextStyle(fontSize: 10, color: Colors.grey[600], fontWeight: FontWeight.w500)),
-          SizedBox(height: 4),
-          Text(value, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey[800]), textAlign: TextAlign.center),
-        ],
-      ),
+    return Column(
+      children: [
+        Icon(icon, size: 18, color: color.withOpacity(0.7)),
+        SizedBox(height: 4),
+        Text(label, style: TextStyle(fontSize: 10, color: Colors.grey[600], fontWeight: FontWeight.w500)),
+        SizedBox(height: 4),
+        Text(value, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey[800]), textAlign: TextAlign.center),
+      ],
     );
   }
 }

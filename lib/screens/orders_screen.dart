@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import '../models/product.dart';
 import '../models/order.dart';
+import '../models/visit.dart';
 import '../widgets/order_form.dart';
+
+enum OrderFilter { all, today, month }
 
 class OrdersScreen extends StatefulWidget {
   @override
@@ -12,6 +15,24 @@ class OrdersScreen extends StatefulWidget {
 class _OrdersScreenState extends State<OrdersScreen> {
   late List<Product> products;
   late List<Order> orders;
+  List<Visit>? visits;
+  OrderFilter _filter = OrderFilter.all;
+
+  List<Order> get _filteredOrders {
+    final now = DateTime.now();
+    if (_filter == OrderFilter.today) {
+      return orders.where((o) {
+        final d = o.date.toLocal();
+        return d.year == now.year && d.month == now.month && d.day == now.day;
+      }).toList();
+    } else if (_filter == OrderFilter.month) {
+      return orders.where((o) {
+        final d = o.date.toLocal();
+        return d.year == now.year && d.month == now.month;
+      }).toList();
+    }
+    return orders;
+  }
 
   @override
   void didChangeDependencies() {
@@ -20,6 +41,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
     if (arg is Map) {
       products = (arg['products'] as List<Product>?) ?? [];
       orders = (arg['orders'] as List<Order>?) ?? [];
+      visits = (arg['visits'] as List<Visit>?) ?? [];
     } else {
       products = [];
       orders = [];
@@ -30,6 +52,54 @@ class _OrdersScreenState extends State<OrdersScreen> {
     setState(() {
       orders.add(o);
     });
+    // If a visits list was provided, update or create today's visit for this shop
+    try {
+      if (visits != null) {
+        final now = DateTime.now();
+        final found = visits!.cast().firstWhere((v) => v.shop == o.customer && v.date.year == now.year && v.date.month == now.month && v.date.day == now.day, orElse: () => null);
+        if (found != null) {
+          found.hadOrder = true;
+          found.ordersCount = (found.ordersCount ?? 0) + 1;
+          found.settledAmount = (found.settledAmount ?? 0) + o.paidAmount;
+        } else {
+          // create a new visit entry
+          final v = 
+            // avoid importing Visit here by constructing via Map-like fields
+            ((){
+              try {
+                // dynamic creation assuming Visit class available
+                return Visit(id: const Uuid().v4(), shop: o.customer, hadOrder: true, ordersCount: 1, settledAmount: o.paidAmount);
+              } catch (_) { return null; }
+            })();
+          if (v != null) visits!.add(v);
+        }
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _logVisitNoOrder() async {
+    final shopController = TextEditingController();
+    final res = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Log Visit (No Order)'),
+        content: TextField(controller: shopController, decoration: InputDecoration(labelText: 'Shop name')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text('Cancel')),
+          ElevatedButton(onPressed: () {
+            final shop = shopController.text.trim();
+            if (shop.isEmpty) return;
+            try {
+              final v = Visit(id: const Uuid().v4(), shop: shop, hadOrder: false, ordersCount: 0, settledAmount: 0.0);
+              visits?.add(v);
+            } catch (_) {}
+            Navigator.pop(ctx, true);
+          }, child: Text('Save'))
+        ],
+      ),
+    );
+
+    if (res == true) setState(() {});
   }
 
   @override
@@ -79,9 +149,34 @@ class _OrdersScreenState extends State<OrdersScreen> {
               ),
             ),
             SizedBox(height: 24),
+            // Filter chips: All / Today / This Month
+            Row(
+              children: [
+                ChoiceChip(
+                  label: Text('All'),
+                  selected: _filter == OrderFilter.all,
+                  onSelected: (_) => setState(() => _filter = OrderFilter.all),
+                ),
+                SizedBox(width: 8),
+                ChoiceChip(
+                  label: Text('Today'),
+                  selected: _filter == OrderFilter.today,
+                  onSelected: (_) => setState(() => _filter = OrderFilter.today),
+                ),
+                SizedBox(width: 8),
+                ChoiceChip(
+                  label: Text('This Month'),
+                  selected: _filter == OrderFilter.month,
+                  onSelected: (_) => setState(() => _filter = OrderFilter.month),
+                ),
+                Spacer(),
+                Text('Showing: ${_filteredOrders.length}', style: TextStyle(color: Colors.grey[700])),
+              ],
+            ),
+            SizedBox(height: 12),
             // Orders list
             Expanded(
-              child: orders.isEmpty
+              child: _filteredOrders.isEmpty
                   ? Center(
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
@@ -101,9 +196,9 @@ class _OrdersScreenState extends State<OrdersScreen> {
                       ),
                     )
                   : ListView.builder(
-                      itemCount: orders.length,
+                      itemCount: _filteredOrders.length,
                       itemBuilder: (context, i) {
-                        final o = orders[i];
+                        final o = _filteredOrders[i];
                         final isPaid = o.pending <= 0;
                         final statusColor = isPaid ? Colors.green : Colors.orange;
                         final statusLabel = isPaid ? 'PAID' : 'PENDING';

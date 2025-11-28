@@ -17,6 +17,10 @@ class _OrderFormState extends State<OrderForm> {
   final _formKey = GlobalKey<FormState>();
   Product? _selected;
   late TextEditingController _customerController;
+  bool _customerListenerAttached = false;
+  final _personController = TextEditingController();
+  final _phoneController = TextEditingController();
+  final _addressController = TextEditingController();
   final _quantity = TextEditingController(text: '1');
   double _paid = 0;
   late TextEditingController _paidController;
@@ -25,12 +29,20 @@ class _OrderFormState extends State<OrderForm> {
 
   @override
   void dispose() {
-    _customerController.dispose();
+    if (_customerListenerAttached) _customerController.removeListener(_customerListener);
+    try {
+      _customerController.dispose();
+    } catch (_) {}
     _quantity.dispose();
     _paidController.dispose();
     _note.dispose();
+    _personController.dispose();
+    _phoneController.dispose();
+    _addressController.dispose();
     super.dispose();
   }
+
+  void _customerListener() => setState(() {});
 
   void _submit() {
     if (_formKey.currentState!.validate() && _selected != null) {
@@ -40,6 +52,9 @@ class _OrderFormState extends State<OrderForm> {
       final order = Order(
         id: id,
         customer: _customerController.text.trim(),
+        customerName: _personController.text.trim().isEmpty ? null : _personController.text.trim(),
+        phone: _phoneController.text.trim().isEmpty ? null : _phoneController.text.trim(),
+        address: _addressController.text.trim().isEmpty ? null : _addressController.text.trim(),
         product: _selected!,
         quantity: qty,
         paidAmount: paidVal,
@@ -56,6 +71,8 @@ class _OrderFormState extends State<OrderForm> {
   void initState() {
     super.initState();
     _customerController = TextEditingController();
+    _customerController.addListener(_customerListener);
+    _customerListenerAttached = true;
     _paidController = TextEditingController(text: _paid.toStringAsFixed(2));
   }
 
@@ -85,7 +102,19 @@ class _OrderFormState extends State<OrderForm> {
                   },
                   fieldViewBuilder: (context, textEditingController, focusNode, onFieldSubmitted) {
                     // Keep a reference to the internal controller so we can read value on submit
-                    _customerController = textEditingController;
+                    if (_customerController != textEditingController) {
+                      // dispose our previous controller (created in initState) to avoid leaks
+                      try {
+                        _customerController.removeListener(_customerListener);
+                        _customerController.dispose();
+                      } catch (_) {}
+                      _customerController = textEditingController;
+                    }
+                    // ensure listener is attached
+                    if (!_customerListenerAttached) {
+                      _customerController.addListener(_customerListener);
+                      _customerListenerAttached = true;
+                    }
                     return TextFormField(
                       controller: textEditingController,
                       focusNode: focusNode,
@@ -95,6 +124,40 @@ class _OrderFormState extends State<OrderForm> {
                   },
                 ),
               ),
+              // If this is a new customer (not in existing list) show optional contact fields
+              Builder(builder: (context) {
+                final existing = widget.existingCustomers ?? [];
+                final current = _customerController.text.trim();
+                final isNew = current.isNotEmpty && !existing.any((c) => c.toLowerCase() == current.toLowerCase());
+                if (!isNew) return SizedBox.shrink();
+                return Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8.0),
+                      child: TextFormField(
+                        controller: _personController,
+                        decoration: const InputDecoration(labelText: 'Contact person (optional)'),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8.0),
+                      child: TextFormField(
+                        controller: _phoneController,
+                        keyboardType: TextInputType.phone,
+                        decoration: const InputDecoration(labelText: 'Phone (optional)'),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8.0),
+                      child: TextFormField(
+                        controller: _addressController,
+                        decoration: const InputDecoration(labelText: 'Address (optional)'),
+                        maxLines: 2,
+                      ),
+                    ),
+                  ],
+                );
+              }),
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 8.0),
                 child: DropdownButtonFormField<Product>(

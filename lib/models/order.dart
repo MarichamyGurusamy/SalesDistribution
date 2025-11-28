@@ -4,7 +4,13 @@ enum PaymentMethod { cash, qr, invoice }
 
 class Order {
   final String id;
+  // Existing field kept for backward compatibility and display (typically the shop name)
   final String customer;
+  // Optional customer/person name (contact person)
+  String? customerName;
+  // Optional phone and address captured for new customers
+  String? phone;
+  String? address;
   final Product product;
   final int quantity;
   final DateTime date;
@@ -16,6 +22,9 @@ class Order {
   Order({
     required this.id,
     required this.customer,
+    this.customerName,
+    this.phone,
+    this.address,
     required this.product,
     required this.quantity,
     required this.paidAmount,

@@ -2,7 +2,7 @@ import 'dart:io';
 import 'dart:convert';
 import 'package:csv/csv.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:share_plus/share_plus.dart';
+// share_plus removed to avoid plugin build errors on some environments.
 import '../models/order.dart';
 
 class ExportService {
@@ -50,11 +50,7 @@ class ExportService {
     final file = File('${outputDir.path}${Platform.pathSeparator}$name');
     await file.writeAsString(csv, flush: true);
 
-    try {
-      await Share.shareXFiles([XFile(file.path)], text: 'Orders export');
-    } catch (_) {
-      // ignore
-    }
+    // Returning file path; callers can share/upload the file using platform tools.
 
     return file.path;
   }

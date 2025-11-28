@@ -10,10 +10,11 @@ class SettlementService {
 
   // Calculate total cash to be settled (all CASH payment orders that are NOT settled)
   static double calculateDailyCash(List<Order> orders) {
-    // Sum only collected amounts from unsettled CASH orders
+    // Sum the total order value for unsettled CASH orders so partial payments
+    // are included in the final settlement calculation (paid + pending).
     return orders
-        .where((o) => o.paymentMethod == PaymentMethod.cash && !o.isSettled)
-        .fold(0.0, (sum, o) => sum + o.paidAmount);
+      .where((o) => o.paymentMethod == PaymentMethod.cash && !o.isSettled)
+      .fold(0.0, (sum, o) => sum + o.total);
   }
 
   // Get count of cash orders (not yet settled)
@@ -25,12 +26,16 @@ class SettlementService {
   static Settlement createSettlement(List<Order> orders) {
     // For cash settlement, only include unsettled CASH orders
     final cashOrders = orders.where((o) => o.paymentMethod == PaymentMethod.cash && !o.isSettled).toList();
-    final totalCash = calculateDailyCash(orders);
+    // totalExpected is the sum of order totals for included cash orders
+    final totalExpected = cashOrders.fold(0.0, (s, o) => s + o.total);
+    // totalCollected is the sum of amounts already collected (partial/full)
+    final totalCollected = cashOrders.fold(0.0, (s, o) => s + o.paidAmount);
 
     return Settlement(
       id: const Uuid().v4(),
       date: DateTime.now(),
-      totalCash: totalCash,
+      totalCollected: totalCollected,
+      totalExpected: totalExpected,
       orderCount: cashOrders.length,
     );
   }
@@ -61,7 +66,8 @@ class SettlementService {
 
   // Get total settled today
   static double getTotalSettledToday() {
-    return getTodaySettlements().fold(0.0, (sum, s) => sum + s.totalCash);
+    // Sum collected amounts from today's settlements
+    return getTodaySettlements().fold(0.0, (sum, s) => sum + s.totalCollected);
   }
 
   // Calculate total invoice due (sum of pending for invoice orders)

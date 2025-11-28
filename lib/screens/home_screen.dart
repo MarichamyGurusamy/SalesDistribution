@@ -3,7 +3,9 @@ import '../models/order.dart';
 import '../models/product.dart';
 import '../services/export_service.dart';
 import '../services/settlement_service.dart';
+import '../models/visit.dart';
 import '../widgets/jana_masala_logo.dart';
+import 'visits_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   @override
@@ -19,6 +21,7 @@ class _HomeScreenState extends State<HomeScreen> {
     Product(id: 'p2', name: 'Product B', unitPrice: 25.5),
   ];
   static final List<Order> _ordersDemo = [];
+  static final List<Visit> _visitsDemo = [];
 
   @override
   void didChangeDependencies() {
@@ -34,6 +37,21 @@ class _HomeScreenState extends State<HomeScreen> {
   double get _totalCash => SettlementService.calculateDailyCash(_ordersDemo);
 
   int get _cashOrderCount => SettlementService.getCashOrderCount(_ordersDemo);
+
+  int get _visitsToday {
+    final today = DateTime.now();
+    return _visitsDemo.where((v) => v.date.year == today.year && v.date.month == today.month && v.date.day == today.day).length;
+  }
+
+  int get _visitsWithOrdersToday {
+    final today = DateTime.now();
+    return _visitsDemo.where((v) => v.hadOrder && v.date.year == today.year && v.date.month == today.month && v.date.day == today.day).length;
+  }
+
+  int get _visitsWithoutOrdersToday {
+    final today = DateTime.now();
+    return _visitsDemo.where((v) => !v.hadOrder && v.date.year == today.year && v.date.month == today.month && v.date.day == today.day).length;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -106,9 +124,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       const SizedBox(width: 12),
                       Expanded(
                         child: _SummaryCard(
-                          label: 'Invoice Due',
-                          amount: SettlementService.calculateInvoiceDue(_ordersDemo),
-                          icon: Icons.receipt_long,
+                          label: 'Visits Today',
+                          amount: _visitsToday.toDouble(),
+                          icon: Icons.storefront,
                           color: Colors.amber[300]!,
                         ),
                       ),
@@ -142,7 +160,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           icon: Icons.receipt_long,
                           color: Color(0xFFFFA502),
                           onTap: () async {
-                            await Navigator.pushNamed(context, '/orders', arguments: {'products': _productsDemo, 'orders': _ordersDemo});
+                            await Navigator.pushNamed(context, '/orders', arguments: {'products': _productsDemo, 'orders': _ordersDemo, 'visits': _visitsDemo});
                             setState(() {});
                           },
                         ),
@@ -155,6 +173,21 @@ class _HomeScreenState extends State<HomeScreen> {
                           color: Color(0xFF6A1B9A),
                           onTap: () async {
                             await Navigator.pushNamed(context, '/customers', arguments: {'orders': _ordersDemo});
+                            setState(() {});
+                          },
+                        ),
+                      ),
+                      SizedBox(width: 16),
+                      Expanded(
+                        child: _ActionCard(
+                          title: 'Visits',
+                          icon: Icons.storefront,
+                          color: Color(0xFF00796B),
+                          onTap: () async {
+                            await Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (_) => VisitsScreen(visits: _visitsDemo, existingShops: _ordersDemo.map((o) => o.customer).toSet().toList())),
+                            );
                             setState(() {});
                           },
                         ),
@@ -321,7 +354,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFFE23744)),
                     ),
                     SizedBox(height: 12),
-                    _SettlementRow('Total Cash Collected', '₹${settlement.totalCash.toStringAsFixed(2)}', Colors.green),
+                    _SettlementRow('Already Collected', '₹${settlement.totalCollected.toStringAsFixed(2)}', Colors.green),
+                    SizedBox(height: 8),
+                    _SettlementRow('Total To Settle', '₹${settlement.totalExpected.toStringAsFixed(2)}', Colors.orange),
                     SizedBox(height: 8),
                     _SettlementRow('Cash Orders', '${settlement.orderCount}', Colors.blue),
                     SizedBox(height: 8),
@@ -346,8 +381,9 @@ class _HomeScreenState extends State<HomeScreen> {
                               overflow: TextOverflow.ellipsis,
                             ),
                           ),
+                          // show paid / total so partial payments are visible
                           Text(
-                            '₹${o.paidAmount.toStringAsFixed(2)}',
+                            '₹${o.paidAmount.toStringAsFixed(2)} / ₹${o.total.toStringAsFixed(2)}',
                             style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey[800]),
                           ),
                         ],
@@ -358,7 +394,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               SizedBox(height: 16),
               Text(
-                'Confirming will mark all cash payments as settled for today.',
+                'Confirming will mark all cash payments as settled for today (partial payments included).',
                 style: TextStyle(fontSize: 12, color: Colors.grey[600], fontStyle: FontStyle.italic),
               ),
             ],
@@ -376,7 +412,7 @@ class _HomeScreenState extends State<HomeScreen> {
               Navigator.pop(context);
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
-                  content: Text('✓ Settlement confirmed! Cash: ₹${settlement.totalCash.toStringAsFixed(2)}'),
+                  content: Text('✓ Settlement confirmed! Settled: ₹${settlement.totalExpected.toStringAsFixed(2)}'),
                   backgroundColor: Colors.green,
                   duration: Duration(seconds: 3),
                 ),
@@ -416,29 +452,27 @@ class _HomeScreenState extends State<HomeScreen> {
     required IconData icon,
     required Color color,
   }) {
-    return Expanded(
-      child: Container(
-        padding: EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.white10,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.white30, width: 1),
-        ),
-        child: Column(
-          children: [
-            Icon(icon, color: color, size: 32),
-            SizedBox(height: 8),
-            Text(
-              label,
-              style: TextStyle(fontSize: 12, color: Colors.white70, fontWeight: FontWeight.w500),
-            ),
-            SizedBox(height: 8),
-            Text(
-              amount.toStringAsFixed(2),
-              style: TextStyle(fontSize: 20, color: Colors.white, fontWeight: FontWeight.bold),
-            ),
-          ],
-        ),
+    return Container(
+      padding: EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white10,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white30, width: 1),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, color: color, size: 32),
+          SizedBox(height: 8),
+          Text(
+            label,
+            style: TextStyle(fontSize: 12, color: Colors.white70, fontWeight: FontWeight.w500),
+          ),
+          SizedBox(height: 8),
+          Text(
+            amount.toStringAsFixed(2),
+            style: TextStyle(fontSize: 20, color: Colors.white, fontWeight: FontWeight.bold),
+          ),
+        ],
       ),
     );
   }

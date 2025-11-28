@@ -12,7 +12,7 @@ dependencies:
   cupertino_icons: ^1.0.2
   path_provider: ^2.0.11
   csv: ^5.0.0
-  share_plus: ^6.3.0
+  # share_plus removed to avoid Android plugin namespace issues during build
   uuid: ^4.0.0
   # qr_flutter: ^4.0.0  # removed temporarily
   # intl: ^0.17.0      # removed temporarily
