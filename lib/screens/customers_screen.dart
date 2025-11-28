@@ -9,263 +9,326 @@ class CustomersScreen extends StatefulWidget {
 class _CustomersScreenState extends State<CustomersScreen> {
   List<Order> _orders = [];
 
+  // Store editable customer meta separately to avoid mutating Order objects
+  final Map<String, Map<String, String>> _customerInfo = {};
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final args = ModalRoute.of(context)!.settings.arguments;
-    if (args is Map && args['orders'] is List<Order>) {
-      _orders = args['orders'] as List<Order>;
+    try {
+      final route = ModalRoute.of(context);
+      if (route == null) return;
+      final args = route.settings.arguments;
+      if (args is Map && args['orders'] is List<Order>) {
+        _orders = args['orders'] as List<Order>;
+      } else if (args is List<Order>) {
+        _orders = args;
+      } else if (args is List<dynamic>) {
+        final casted = args.whereType<Order>().toList();
+        if (casted.isNotEmpty) _orders = casted;
+      }
+    } catch (e, st) {
+      debugPrint('didChangeDependencies parse error: $e\n$st');
+    }
+
+    // populate _customerInfo with any existing details from orders (first available)
+    for (final o in _orders) {
+      final key = o.customer ?? '';
+      if (key.isEmpty) continue;
+      _customerInfo.putIfAbsent(key, () {
+        final map = <String, String>{};
+        if ((o.customerName ?? '').isNotEmpty) map['contact'] = o.customerName!;
+        if ((o.phone ?? '').isNotEmpty) map['phone'] = o.phone!;
+        if ((o.address ?? '').isNotEmpty) map['address'] = o.address!;
+        return map;
+      });
     }
   }
 
   List<String> get _customers {
     final set = <String>{};
-    for (final o in _orders) set.add(o.customer);
+    for (final o in _orders) {
+      if ((o.customer ?? '').isNotEmpty) set.add(o.customer!);
+    }
     final list = set.toList();
     list.sort();
     return list;
   }
 
-  double _totalPaidFor(String customer) => _orders.where((o) => o.customer == customer).fold(0.0, (s, o) => s + o.paidAmount);
+  double _totalPaidFor(String customer) =>
+      _orders.where((o) => o.customer == customer).fold(0.0, (s, o) => s + (o.paidAmount ?? 0.0));
 
-  double _totalPendingFor(String customer) => _orders.where((o) => o.customer == customer).fold(0.0, (s, o) => s + o.pending);
+  double _totalPendingFor(String customer) =>
+      _orders.where((o) => o.customer == customer).fold(0.0, (s, o) => s + (o.pending ?? 0.0));
 
-  List<Order> _ordersFor(String customer) => _orders.where((o) => o.customer == customer).toList();
+  List<Order> _ordersFor(String customer) =>
+      _orders.where((o) => o.customer == customer).toList();
+
+  void _safeSetState(VoidCallback fn) {
+    if (!mounted) return;
+    try {
+      setState(fn);
+    } catch (e) {
+      debugPrint('safeSetState error: $e');
+    }
+  }
 
   void _showCustomerDetails(String customer) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      builder: (ctx) {
-        final orders = _ordersFor(customer);
-        return StatefulBuilder(builder: (context, setStateSheet) {
-          void refresh() => setState(() { setStateSheet(() {}); });
+    try {
+      final orders = _ordersFor(customer);
+      showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        builder: (ctx) {
+          return StatefulBuilder(builder: (context, setStateSheet) {
+            return Padding(
+              padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+              child: DraggableScrollableSheet(
+                expand: false,
+                initialChildSize: 0.85,
+                minChildSize: 0.4,
+                maxChildSize: 0.95,
+                builder: (_, controller) {
+                  return Column(
+                    children: [
+                      const SizedBox(height: 12),
+                      Container(width: 40, height: 6, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(8))),
+                      const SizedBox(height: 12),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(child: Text(customer, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
+                            Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                              Text('Paid: ₹${_totalPaidFor(customer).toStringAsFixed(2)}', style: TextStyle(fontSize: 14, color: Colors.green[700], fontWeight: FontWeight.w600)),
+                              Text('Due: ₹${_totalPendingFor(customer).toStringAsFixed(2)}', style: TextStyle(fontSize: 12, color: Colors.red[700])),
+                            ]),
+                            const SizedBox(width: 8),
+                            ElevatedButton(
+                              onPressed: () async {
+                                try {
+                                  final changed = await _showEditCustomerDialog(customer);
+                                  if (changed == true) {
+                                    _safeSetState(() {});
+                                    setStateSheet(() {});
+                                  }
+                                } catch (e) {
+                                  debugPrint('edit dialog error: $e');
+                                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Failed to edit customer')));
+                                }
+                              },
+                              child: const Text('Edit Details'),
+                            )
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Expanded(
+                        child: orders.isEmpty
+                            ? const Center(child: Text('No orders for this customer'))
+                            : ListView.builder(
+                                controller: controller,
+                                itemCount: orders.length,
+                                itemBuilder: (context, idx) {
+                                  final o = orders[idx];
+                                  final isPaid = (o.pending ?? 0) <= 0;
+                                  final statusColor = isPaid ? Colors.green : Colors.orange;
+                                  final statusLabel = isPaid ? 'PAID' : 'PENDING';
 
-          return Padding(
-            padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-            child: DraggableScrollableSheet(
-              expand: false,
-              initialChildSize: 0.85,
-              minChildSize: 0.4,
-              maxChildSize: 0.95,
-              builder: (_, controller) => Column(
-                children: [
-                  SizedBox(height: 12),
-                  Container(width: 40, height: 6, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(8))),
-                  SizedBox(height: 12),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Expanded(child: Text(customer, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
-                        Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                          Text('Paid: ₹${_totalPaidFor(customer).toStringAsFixed(2)}', style: TextStyle(fontSize: 14, color: Colors.green[700], fontWeight: FontWeight.w600)),
-                          Text('Due: ₹${_totalPendingFor(customer).toStringAsFixed(2)}', style: TextStyle(fontSize: 12, color: Colors.red[700])),
-                          ]),
-                          SizedBox(width: 8),
-                          ElevatedButton(
-                            onPressed: () async {
-                              final changed = await _showEditCustomerDialog(customer);
-                              if (changed == true) {
-                                setState(() {});
-                                setStateSheet(() {});
-                              }
-                            },
-                            child: Text('Edit Details'),
-                          )
-                      ],
-                    ),
-                  ),
-                  SizedBox(height: 12),
-                  Expanded(
-                    child: orders.isEmpty
-                        ? Center(child: Text('No orders for this customer'))
-                        : ListView.builder(
-                            controller: controller,
-                            itemCount: orders.length,
-                            itemBuilder: (context, idx) {
-                              final o = orders[idx];
-                              final isPaid = o.pending <= 0;
-                              final statusColor = isPaid ? Colors.green : Colors.orange;
-                              final statusLabel = isPaid ? 'PAID' : 'PENDING';
+                                  final productName = o.product?.name ?? 'Unknown';
+                                  final qty = o.quantity ?? 0;
+                                  final total = o.total ?? 0.0;
+                                  final paid = o.paidAmount ?? 0.0;
+                                  final pending = o.pending ?? 0.0;
+                                  final paymentLabel = (o.paymentMethod?.toString().split('.').last.toUpperCase()) ?? 'UNKNOWN';
+                                  final dateLabel = (o.date != null) ? o.date!.toLocal().toString().split(' ')[0] : '';
 
-                              return Container(
-                                margin: EdgeInsets.only(bottom: 12, left: 12, right: 12),
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(12),
-                                  boxShadow: [BoxShadow(color: Colors.grey[300]!, blurRadius: 8, offset: Offset(0, 4))],
-                                  border: Border.all(color: Colors.grey[200]!, width: 1),
-                                ),
-                                child: Padding(
-                                  padding: EdgeInsets.all(12),
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Row(
-                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  return Container(
+                                    margin: const EdgeInsets.only(bottom: 12, left: 12, right: 12),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(12),
+                                      boxShadow: [BoxShadow(color: Colors.grey[300]!, blurRadius: 8, offset: const Offset(0, 4))],
+                                      border: Border.all(color: Colors.grey[200]!, width: 1),
+                                    ),
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(12),
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
                                         children: [
-                                          Expanded(
-                                            child: Column(
-                                              crossAxisAlignment: CrossAxisAlignment.start,
-                                              children: [
-                                                Text(o.product.name, style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.grey[800])),
-                                                SizedBox(height: 4),
-                                                Text('${o.quantity} pcs', style: TextStyle(fontSize: 13, color: Colors.grey[600])),
-                                              ],
-                                            ),
+                                          Row(
+                                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                            children: [
+                                              Expanded(
+                                                child: Column(
+                                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                                  children: [
+                                                    Text(productName, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.grey)),
+                                                    const SizedBox(height: 4),
+                                                    Text('$qty pcs', style: const TextStyle(fontSize: 13, color: Colors.grey)),
+                                                  ],
+                                                ),
+                                              ),
+                                              Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                                decoration: BoxDecoration(
+                                                  color: statusColor.withOpacity(0.2),
+                                                  borderRadius: BorderRadius.circular(20),
+                                                  border: Border.all(color: statusColor, width: 1.2),
+                                                ),
+                                                child: Text(statusLabel, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: statusColor)),
+                                              ),
+                                            ],
                                           ),
-                                          Container(
-                                            padding: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                            decoration: BoxDecoration(
-                                              color: statusColor.withOpacity(0.2),
-                                              borderRadius: BorderRadius.circular(20),
-                                              border: Border.all(color: statusColor, width: 1.2),
-                                            ),
-                                            child: Text(statusLabel, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: statusColor)),
+                                          const SizedBox(height: 12),
+                                          Row(
+                                            children: [
+                                              Expanded(child: _DetailItem(label: 'Total', value: '₹${total.toStringAsFixed(2)}', icon: Icons.price_change, color: const Color(0xFFE23744))),
+                                              const SizedBox(width: 12),
+                                              Expanded(child: _DetailItem(label: 'Paid', value: '₹${paid.toStringAsFixed(2)}', icon: Icons.check_circle, color: Colors.green)),
+                                              const SizedBox(width: 12),
+                                              Expanded(child: _DetailItem(label: 'Due', value: '₹${pending.toStringAsFixed(2)}', icon: Icons.warning_rounded, color: Colors.orange)),
+                                            ],
                                           ),
+                                          const SizedBox(height: 8),
+                                          Row(
+                                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                            children: [
+                                              Row(children: [const Icon(Icons.payment, size: 16, color: Colors.grey), const SizedBox(width: 6), Text(paymentLabel, style: const TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.w600))]),
+                                              Row(children: [Text(dateLabel, style: const TextStyle(fontSize: 12, color: Colors.grey)), const SizedBox(width: 8), ElevatedButton(onPressed: pending <= 0 ? null : () async {
+                                                final paidAdded = await _showAddPaymentDialog(o);
+                                                if (paidAdded != null && paidAdded > 0) {
+                                                  _safeSetState(() {});
+                                                  setStateSheet(() {});
+                                                }
+                                              }, child: const Text('Add Payment'))])
+                                            ],
+                                          )
                                         ],
                                       ),
-                                      SizedBox(height: 12),
-                                      Row(
-                                        children: [
-                                          Expanded(child: _DetailItem(label: 'Total', value: '₹${o.total.toStringAsFixed(2)}', icon: Icons.price_change, color: Color(0xFFE23744))),
-                                          Expanded(child: _DetailItem(label: 'Paid', value: '₹${o.paidAmount.toStringAsFixed(2)}', icon: Icons.check_circle, color: Colors.green)),
-                                          Expanded(child: _DetailItem(label: 'Due', value: '₹${o.pending.toStringAsFixed(2)}', icon: Icons.warning_rounded, color: Colors.orange)),
-                                        ],
-                                      ),
-                                      SizedBox(height: 8),
-                                      Row(
-                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                        children: [
-                                          Row(children: [Icon(Icons.payment, size: 16, color: Colors.grey[600]), SizedBox(width: 6), Text(o.paymentMethod.toString().split('.').last.toUpperCase(), style: TextStyle(fontSize: 12, color: Colors.grey[600], fontWeight: FontWeight.w600))]),
-                                          Row(children: [Text(o.date.toLocal().toString().split(' ')[0], style: TextStyle(fontSize: 12, color: Colors.grey[500])), SizedBox(width: 8), ElevatedButton(onPressed: o.pending<=0?null:() async { final paid = await _showAddPaymentDialog(o); if (paid!=null && paid>0){ setState((){}); setStateSheet((){});} }, child: Text('Add Payment'))])
-                                        ],
-                                      )
-                                    ],
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
-                  ),
-                ],
+                                    ),
+                                  );
+                                },
+                              ),
+                      ),
+                    ],
+                  );
+                },
               ),
-            ),
-          );
-        });
-      },
-    );
+            );
+          });
+        },
+      );
+    } catch (e, st) {
+      debugPrint('showCustomerDetails failed: $e\n$st');
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Failed to open customer details')));
+    }
   }
 
   Future<double?> _showAddPaymentDialog(Order order) async {
-    final controller = TextEditingController(text: order.pending.toStringAsFixed(2));
     double? result;
     await showDialog<void>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('Add Payment'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('Order: ${order.product.name} • Due: ₹${order.pending.toStringAsFixed(2)}'),
-            SizedBox(height: 12),
-            TextField(
-              controller: controller,
-              keyboardType: TextInputType.numberWithOptions(decimal: true),
-              decoration: InputDecoration(prefixText: '₹ ', border: OutlineInputBorder()),
+      builder: (ctx) {
+        final controller = TextEditingController(text: (order.pending ?? 0.0).toStringAsFixed(2));
+        return StatefulBuilder(builder: (context, setState) {
+          return AlertDialog(
+            title: const Text('Add Payment'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('Order: ${order.product?.name ?? 'Unknown'} • Due: ₹${(order.pending ?? 0).toStringAsFixed(2)}'),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: controller,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(prefixText: '₹ ', border: OutlineInputBorder()),
+                ),
+              ],
             ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Cancel')),
-          ElevatedButton(
-            onPressed: () {
-              final v = double.tryParse(controller.text) ?? 0;
-              final toApply = (v.clamp(0, order.pending)).toDouble();
-              if (toApply <= 0) return;
-              order.paidAmount += toApply;
-              result = toApply;
-              Navigator.pop(ctx);
-            },
-            child: Text('Apply'),
-          ),
-        ],
-      ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+              ElevatedButton(
+                onPressed: () {
+                  final v = double.tryParse(controller.text) ?? 0;
+                  final toApply = (v.clamp(0, order.pending ?? 0)).toDouble();
+                  if (toApply <= 0) return;
+                  try {
+                    order.paidAmount = (order.paidAmount ?? 0) + toApply;
+                    result = toApply;
+                  } catch (e) {
+                    debugPrint('Failed to apply payment: $e');
+                    if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Unable to update order in memory')));
+                  }
+                  Navigator.pop(ctx);
+                },
+                child: const Text('Apply'),
+              ),
+            ],
+          );
+        });
+      },
     );
     return result;
   }
 
   Future<bool?> _showEditCustomerDialog(String customer) async {
-    // Pre-fill from the first order that has non-empty values
-    final orders = _ordersFor(customer);
-    String? initName;
-    String? initPhone;
-    String? initAddress;
-    for (final o in orders) {
-      if ((initName == null || initName.isEmpty) && (o.customerName != null && o.customerName!.isNotEmpty)) initName = o.customerName;
-      if ((initPhone == null || initPhone.isEmpty) && (o.phone != null && o.phone!.isNotEmpty)) initPhone = o.phone;
-      if ((initAddress == null || initAddress.isEmpty) && (o.address != null && o.address!.isNotEmpty)) initAddress = o.address;
-      if ((initName != null && initName.isNotEmpty) || (initPhone != null && initPhone.isNotEmpty) || (initAddress != null && initAddress.isNotEmpty)) break;
-    }
-
-    final nameController = TextEditingController(text: initName ?? '');
-    final phoneController = TextEditingController(text: initPhone ?? '');
-    final addressController = TextEditingController(text: initAddress ?? '');
+    // Use _customerInfo map to avoid mutating Order objects directly
+    final info = _customerInfo.putIfAbsent(customer, () => {'contact': '', 'phone': '', 'address': ''});
     bool changed = false;
 
-    await showDialog<void>(
+    final result = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('Edit Customer Details'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text('Shop: $customer', style: TextStyle(fontWeight: FontWeight.bold)),
-              SizedBox(height: 12),
-              TextField(controller: nameController, decoration: InputDecoration(labelText: 'Contact person')),
-              SizedBox(height: 8),
-              TextField(controller: phoneController, keyboardType: TextInputType.phone, decoration: InputDecoration(labelText: 'Phone')),
-              SizedBox(height: 8),
-              TextField(controller: addressController, decoration: InputDecoration(labelText: 'Address'), maxLines: 2),
+      builder: (ctx) {
+        final nameController = TextEditingController(text: info['contact'] ?? '');
+        final phoneController = TextEditingController(text: info['phone'] ?? '');
+        final addressController = TextEditingController(text: info['address'] ?? '');
+
+        return StatefulBuilder(builder: (context, setState) {
+          return AlertDialog(
+            title: Text('Edit Details for "$customer"'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // NOTE: don't repeat contact info here — it's displayed on the Customer List only
+                  TextField(controller: nameController, decoration: const InputDecoration(labelText: 'Contact person')),
+                  const SizedBox(height: 8),
+                  TextField(controller: phoneController, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: 'Phone')),
+                  const SizedBox(height: 8),
+                  TextField(controller: addressController, decoration: const InputDecoration(labelText: 'Address'), maxLines: 2),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+              ElevatedButton(
+                onPressed: () {
+                  final n = nameController.text.trim();
+                  final p = phoneController.text.trim();
+                  final a = addressController.text.trim();
+
+                  // Save into _customerInfo map (safe, won't mutate Order objects)
+                  _customerInfo[customer] = {'contact': n, 'phone': p, 'address': a};
+                  changed = true;
+                  Navigator.pop(ctx, true);
+                },
+                child: const Text('Save'),
+              )
             ],
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Cancel')),
-          ElevatedButton(
-            onPressed: () {
-              final n = nameController.text.trim();
-              final p = phoneController.text.trim();
-              final a = addressController.text.trim();
-              for (final o in orders) {
-                if (n.isNotEmpty) o.customerName = n;
-                if (p.isNotEmpty) o.phone = p;
-                if (a.isNotEmpty) o.address = a;
-              }
-              changed = true;
-              Navigator.pop(ctx);
-            },
-            child: Text('Save'))
-        ],
-      ),
+          );
+        });
+      },
     );
 
-    try {
-      nameController.dispose();
-      phoneController.dispose();
-      addressController.dispose();
-    } catch (_) {}
-
-    return changed;
+    return result ?? changed;
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Customers')),
+      appBar: AppBar(title: const Text('Customers')),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
@@ -273,11 +336,11 @@ class _CustomersScreenState extends State<CustomersScreen> {
             // Header summary similar to Orders
             Container(
               width: double.infinity,
-              padding: EdgeInsets.all(16),
+              padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: Color(0xFFE23744).withOpacity(0.06),
+                color: const Color(0xFFE23744).withOpacity(0.06),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Color(0xFFE23744), width: 1.2),
+                border: Border.all(color: const Color(0xFFE23744), width: 1.2),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -286,18 +349,18 @@ class _CustomersScreenState extends State<CustomersScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text('Customers', style: TextStyle(fontSize: 14, color: Colors.grey[700], fontWeight: FontWeight.w500)),
-                      SizedBox(height: 4),
-                      Text('${_customers.length}', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Color(0xFFE23744))),
+                      const SizedBox(height: 4),
+                      Text('${_customers.length}', style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Color(0xFFE23744))),
                     ],
                   ),
-                  Icon(Icons.people, size: 56, color: Color(0xFFE23744).withOpacity(0.6)),
+                  Icon(Icons.people, size: 56, color: const Color(0xFFE23744).withOpacity(0.6)),
                 ],
               ),
             ),
-            SizedBox(height: 18),
+            const SizedBox(height: 18),
             Expanded(
               child: _customers.isEmpty
-                  ? Center(child: Text('No customers yet'))
+                  ? const Center(child: Text('No customers yet'))
                   : ListView.builder(
                       itemCount: _customers.length,
                       itemBuilder: (context, idx) {
@@ -305,28 +368,55 @@ class _CustomersScreenState extends State<CustomersScreen> {
                         final paid = _totalPaidFor(name);
                         final due = _totalPendingFor(name);
                         final count = _orders.where((o) => o.customer == name).length;
+                        final info = _customerInfo[name];
+
                         return Container(
-                          margin: EdgeInsets.only(bottom: 12),
+                          margin: const EdgeInsets.only(bottom: 12),
                           decoration: BoxDecoration(
                             color: Colors.white,
                             borderRadius: BorderRadius.circular(12),
-                            boxShadow: [BoxShadow(color: Colors.grey[300]!, blurRadius: 8, offset: Offset(0, 4))],
+                            boxShadow: [BoxShadow(color: Colors.grey[300]!, blurRadius: 8, offset: const Offset(0, 4))],
                             border: Border.all(color: Colors.grey[200]!, width: 1),
                           ),
                           child: ListTile(
-                            contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                            title: Text(name, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.grey[800])),
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                            title: Text(name, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.grey)),
                             subtitle: Padding(
                               padding: const EdgeInsets.only(top: 8.0),
-                              child: Row(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  _DetailItem(label: 'Orders', value: '$count', icon: Icons.list_alt, color: Color(0xFFE23744)),
-                                  _DetailItem(label: 'Paid', value: '₹${paid.toStringAsFixed(2)}', icon: Icons.check_circle, color: Colors.green),
-                                  _DetailItem(label: 'Due', value: '₹${due.toStringAsFixed(2)}', icon: Icons.warning_rounded, color: Colors.orange),
+                                  // show contact / phone / address only on the customer-list page (single place)
+                                  if ((info?['contact']?.isNotEmpty ?? false) || (info?['phone']?.isNotEmpty ?? false) || (info?['address']?.isNotEmpty ?? false))
+                                    Padding(
+                                      padding: const EdgeInsets.only(bottom: 8.0),
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          if ((info?['contact']?.isNotEmpty ?? false))
+                                            Text('Contact: ${info!['contact']}', style: const TextStyle(fontSize: 12, color: Colors.black87)),
+                                          if ((info?['phone']?.isNotEmpty ?? false))
+                                            Text('Phone: ${info!['phone']}', style: const TextStyle(fontSize: 12, color: Colors.black54)),
+                                          if ((info?['address']?.isNotEmpty ?? false))
+                                            Text('Address: ${info!['address']}', style: const TextStyle(fontSize: 12, color: Colors.black54)),
+                                        ],
+                                      ),
+                                    ),
+                                  // spaced Orders | Paid | Due row
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Expanded(child: _DetailItem(label: 'Orders', value: '$count', icon: Icons.list_alt, color: const Color(0xFFE23744))),
+                                      const SizedBox(width: 12),
+                                      Expanded(child: _DetailItem(label: 'Paid', value: '₹${paid.toStringAsFixed(2)}', icon: Icons.check_circle, color: Colors.green)),
+                                      const SizedBox(width: 12),
+                                      Expanded(child: _DetailItem(label: 'Due', value: '₹${due.toStringAsFixed(2)}', icon: Icons.warning_rounded, color: Colors.orange)),
+                                    ],
+                                  ),
                                 ],
                               ),
                             ),
-                            trailing: Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey[500]),
+                            trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
                             onTap: () => _showCustomerDetails(name),
                           ),
                         );
@@ -348,10 +438,10 @@ class _CustomersScreenState extends State<CustomersScreen> {
     return Column(
       children: [
         Icon(icon, size: 18, color: color.withOpacity(0.7)),
-        SizedBox(height: 4),
-        Text(label, style: TextStyle(fontSize: 10, color: Colors.grey[600], fontWeight: FontWeight.w500)),
-        SizedBox(height: 4),
-        Text(value, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey[800]), textAlign: TextAlign.center),
+        const SizedBox(height: 6),
+        Text(label, style: TextStyle(fontSize: 11, color: Colors.grey[600], fontWeight: FontWeight.w500)),
+        const SizedBox(height: 6),
+        Text(value, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey), textAlign: TextAlign.center),
       ],
     );
   }
