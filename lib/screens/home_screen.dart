@@ -139,11 +139,20 @@ class _HomeScreenState extends State<HomeScreen> {
               padding: EdgeInsets.all(24),
               child: Column(
                 children: [
-                  // Action buttons grid
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _ActionCard(
+                  // Action buttons grid (responsive 2x2 on narrow screens)
+                  LayoutBuilder(builder: (context, constraints) {
+                    final crossCount = constraints.maxWidth < 700 ? 2 : 4;
+                    return GridView(
+                      shrinkWrap: true,
+                      physics: NeverScrollableScrollPhysics(),
+                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: crossCount,
+                        crossAxisSpacing: 16,
+                        mainAxisSpacing: 16,
+                        childAspectRatio: 1.08,
+                      ),
+                      children: [
+                        _ActionCard(
                           title: 'Products',
                           icon: Icons.inventory_2,
                           color: Color(0xFFE23744),
@@ -152,10 +161,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             setState(() {});
                           },
                         ),
-                      ),
-                      SizedBox(width: 16),
-                      Expanded(
-                        child: _ActionCard(
+                        _ActionCard(
                           title: 'Orders',
                           icon: Icons.receipt_long,
                           color: Color(0xFFFFA502),
@@ -164,10 +170,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             setState(() {});
                           },
                         ),
-                      ),
-                      SizedBox(width: 16),
-                      Expanded(
-                        child: _ActionCard(
+                        _ActionCard(
                           title: 'Customers',
                           icon: Icons.people,
                           color: Color(0xFF6A1B9A),
@@ -176,10 +179,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             setState(() {});
                           },
                         ),
-                      ),
-                      SizedBox(width: 16),
-                      Expanded(
-                        child: _ActionCard(
+                        _ActionCard(
                           title: 'Visits',
                           icon: Icons.storefront,
                           color: Color(0xFF00796B),
@@ -191,9 +191,9 @@ class _HomeScreenState extends State<HomeScreen> {
                             setState(() {});
                           },
                         ),
-                      ),
-                    ],
-                  ),
+                      ],
+                    );
+                  }),
                   SizedBox(height: 24),
                   // Cash settlement section
                   if (_cashOrderCount > 0)
@@ -321,7 +321,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void _showSettlementDialog() {
     final settlement = SettlementService.createSettlement(_ordersDemo);
     final cashOrders = _ordersDemo.where((o) => o.paymentMethod == PaymentMethod.cash && !o.isSettled).toList();
-    
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -500,6 +500,7 @@ class _HomeScreenState extends State<HomeScreen> {
           border: Border.all(color: color.withOpacity(0.3), width: 2),
         ),
         child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(icon, color: color, size: 48),
             SizedBox(height: 12),
