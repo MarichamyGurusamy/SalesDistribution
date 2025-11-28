@@ -1,13 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import '../models/product.dart';
+import '../models/order_item.dart';
 import '../models/order.dart';
 
 class OrderForm extends StatefulWidget {
   final List<Product> products;
   final List<String>? existingCustomers;
 
-  OrderForm({required this.products, this.existingCustomers});
+  const OrderForm({
+    Key? key,
+    required this.products,
+    this.existingCustomers,
+  }) : super(key: key);
 
   @override
   _OrderFormState createState() => _OrderFormState();
@@ -15,280 +20,386 @@ class OrderForm extends StatefulWidget {
 
 class _OrderFormState extends State<OrderForm> {
   final _formKey = GlobalKey<FormState>();
-  Product? _selected;
-  late TextEditingController _customerController;
-  bool _customerListenerAttached = false;
-  final _personController = TextEditingController();
-  final _phoneController = TextEditingController();
-  final _addressController = TextEditingController();
-  final _quantity = TextEditingController(text: '1');
-  double _paid = 0;
-  late TextEditingController _paidController;
-  PaymentMethod _method = PaymentMethod.cash;
-  final _note = TextEditingController();
 
-  @override
-  void dispose() {
-    if (_customerListenerAttached) _customerController.removeListener(_customerListener);
-    try {
-      _customerController.dispose();
-    } catch (_) {}
-    _quantity.dispose();
-    _paidController.dispose();
-    _note.dispose();
-    _personController.dispose();
-    _phoneController.dispose();
-    _addressController.dispose();
-    super.dispose();
-  }
+  // Customer fields
+  final TextEditingController _customerController = TextEditingController();
+  final TextEditingController _contactController = TextEditingController();
+  final TextEditingController _phoneController = TextEditingController();
+  final TextEditingController _addressController = TextEditingController();
 
-  void _customerListener() => setState(() {});
+  PaymentMethod _paymentMethod = PaymentMethod.cash;
+  final TextEditingController _paidController = TextEditingController(text: '0');
+  final TextEditingController _noteController = TextEditingController();
 
-  void _submit() {
-    if (_formKey.currentState!.validate() && _selected != null) {
-      final qty = int.parse(_quantity.text.trim());
-      final id = const Uuid().v4();
-      final paidVal = double.tryParse(_paidController.text) ?? _paid;
-      final order = Order(
-        id: id,
-        customer: _customerController.text.trim(),
-        customerName: _personController.text.trim().isEmpty ? null : _personController.text.trim(),
-        phone: _phoneController.text.trim().isEmpty ? null : _phoneController.text.trim(),
-        address: _addressController.text.trim().isEmpty ? null : _addressController.text.trim(),
-        product: _selected!,
-        quantity: qty,
-        paidAmount: paidVal,
-        paymentMethod: _method,
-        note: _note.text.trim().isEmpty ? null : _note.text.trim(),
-      );
-      Navigator.of(context).pop(order);
-    }
-  }
+  // Items + controllers
+  final List<OrderItem> _items = [];
+  final List<TextEditingController> _qtyControllers = [];
 
-  double get _total => (_selected?.unitPrice ?? 0) * (int.tryParse(_quantity.text) ?? 0);
+  bool _recalcScheduled = false;
 
   @override
   void initState() {
     super.initState();
-    _customerController = TextEditingController();
-    _customerController.addListener(_customerListener);
-    _customerListenerAttached = true;
-    _paidController = TextEditingController(text: _paid.toStringAsFixed(2));
+    _addItem();
+  }
+
+  OrderItem _createEmptyItem() {
+    return OrderItem(productId: '', product: null, quantity: 1, unitPrice: 0.0);
+  }
+
+  void _addItem() {
+    final item = _createEmptyItem();
+    final qtyCtrl = TextEditingController(text: item.quantity.toString());
+    qtyCtrl.addListener(_scheduleRecalc);
+
+    setState(() {
+      _items.add(item);
+      _qtyControllers.add(qtyCtrl);
+    });
+  }
+
+  void _removeItem(int index) {
+    if (_items.length == 1) {
+      setState(() {
+        _items[0] = _createEmptyItem();
+        _qtyControllers[0].text = '1';
+      });
+      return;
+    }
+
+    try {
+      _qtyControllers[index].removeListener(_scheduleRecalc);
+      _qtyControllers[index].dispose();
+    } catch (_) {}
+
+    setState(() {
+      _items.removeAt(index);
+      _qtyControllers.removeAt(index);
+    });
+
+    _scheduleRecalc();
+  }
+
+  void _scheduleRecalc() {
+    if (_recalcScheduled) return;
+    _recalcScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _performRecalc();
+      _recalcScheduled = false;
+    });
+  }
+
+  void _performRecalc() {
+    for (var i = 0; i < _items.length; i++) {
+      final q = int.tryParse(_qtyControllers[i].text) ?? 0;
+      _items[i].quantity = q > 0 ? q : 0;
+    }
+
+    // Auto-fill paid amount for Cash/Invoice
+    final totalAmount = _items.fold(0.0, (sum, item) => sum + item.total);
+    if (_paymentMethod != PaymentMethod.qr) {
+      _paidController.text = totalAmount.toStringAsFixed(2);
+    }
+
+    if (mounted) setState(() {});
+  }
+
+  double get _total => _items.fold(0.0, (s, it) => s + it.total);
+
+  bool _validateAndSave() {
+    if (!_formKey.currentState!.validate()) return false;
+    final validItems = _items.where((it) => it.productId.isNotEmpty && it.quantity > 0).toList();
+    if (validItems.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Add at least one product with quantity')),
+      );
+      return false;
+    }
+    return true;
+  }
+
+  void _submit() {
+    if (!_validateAndSave()) return;
+
+    final paid = (double.tryParse(_paidController.text) ?? 0.0).clamp(0.0, double.infinity);
+    final cleanedItems = _items.where((it) => it.productId.isNotEmpty && it.quantity > 0).toList();
+    final order = Order(
+      id: const Uuid().v4(),
+      customer: _customerController.text.trim(),
+      items: cleanedItems,
+      paidAmount: paid,
+      paymentMethod: _paymentMethod,
+      customerName: _contactController.text.trim().isEmpty ? null : _contactController.text.trim(),
+      phone: _phoneController.text.trim().isEmpty ? null : _phoneController.text.trim(),
+      address: _addressController.text.trim().isEmpty ? null : _addressController.text.trim(),
+      note: _noteController.text.trim().isEmpty ? null : _noteController.text.trim(),
+    );
+
+    Navigator.of(context).pop(order);
+  }
+
+  @override
+  void dispose() {
+    _customerController.dispose();
+    _contactController.dispose();
+    _phoneController.dispose();
+    _addressController.dispose();
+    _paidController.dispose();
+    _noteController.dispose();
+
+    for (final c in _qtyControllers) {
+      try {
+        c.removeListener(_scheduleRecalc);
+      } catch (_) {}
+      c.dispose();
+    }
+
+    super.dispose();
+  }
+
+  Widget _buildCustomerSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        TextFormField(
+          controller: _customerController,
+          decoration: const InputDecoration(labelText: 'Customer *', border: OutlineInputBorder()),
+          validator: (v) => (v ?? '').trim().isEmpty ? 'Required' : null,
+        ),
+        const SizedBox(height: 8),
+        TextFormField(
+          controller: _contactController,
+          decoration: const InputDecoration(labelText: 'Contact Person', border: OutlineInputBorder()),
+        ),
+        const SizedBox(height: 8),
+        TextFormField(
+          controller: _phoneController,
+          decoration: const InputDecoration(labelText: 'Phone', border: OutlineInputBorder()),
+          keyboardType: TextInputType.phone,
+        ),
+        const SizedBox(height: 8),
+        TextFormField(
+          controller: _addressController,
+          decoration: const InputDecoration(labelText: 'Address (optional)', border: OutlineInputBorder()),
+          maxLines: 2,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildItemRow(int idx) {
+    final item = _items[idx];
+    final qtyController = _qtyControllers[idx];
+
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 6),
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Product dropdown
+            DropdownButtonFormField<String>(
+              value: item.productId.isEmpty ? null : item.productId,
+              decoration: const InputDecoration(
+                  labelText: 'Product *', border: OutlineInputBorder()),
+              items: widget.products
+                  .map((p) => DropdownMenuItem(
+                        value: p.id,
+                        child: Text('${p.name} (₹${p.unitPrice.toStringAsFixed(2)})'),
+                      ))
+                  .toList(),
+              onChanged: (val) {
+                final prod = widget.products.firstWhere(
+                    (p) => p.id == val,
+                    orElse: () => Product(id: '', name: '', unitPrice: 0));
+                setState(() {
+                  item.productId = val ?? '';
+                  item.product = val != null && val.isNotEmpty ? prod : null;
+                  item.unitPrice = prod.unitPrice;
+                });
+              },
+              validator: (_) => (item.productId.isEmpty) ? 'Select product' : null,
+            ),
+            const SizedBox(height: 10),
+            // Quantity / Total / Delete row
+            Row(
+              children: [
+                SizedBox(
+                  width: 80,
+                  child: TextFormField(
+                    controller: qtyController,
+                    decoration: const InputDecoration(
+                      labelText: 'Qty',
+                      isDense: true,
+                      border: OutlineInputBorder(),
+                    ),
+                    keyboardType: const TextInputType.numberWithOptions(signed: false),
+                    validator: (v) {
+                      final n = int.tryParse(v ?? '');
+                      if (n == null || n <= 0) return 'Qty > 0';
+                      return null;
+                    },
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text('Unit Price: ₹${item.unitPrice.toStringAsFixed(2)}',
+                      style: const TextStyle(fontWeight: FontWeight.bold)),
+                ),
+                Expanded(
+                  child: Text('Total: ₹${item.total.toStringAsFixed(2)}',
+                      style: const TextStyle(fontWeight: FontWeight.bold)),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.delete, color: Colors.redAccent, size: 28),
+                  onPressed: () => _removeItem(idx),
+                )
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.only(
-          bottom: MediaQuery.of(context).viewInsets.bottom, left: 16, right: 16, top: 16),
-      child: SingleChildScrollView(
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          const Text('Take Order', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 8),
-          Form(
-            key: _formKey,
-            child: Column(children: [
-              // Customer name with autocomplete suggestions
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8.0),
-                child: Autocomplete<String>(
-                  optionsBuilder: (TextEditingValue textEditingValue) {
-                    final list = widget.existingCustomers ?? [];
-                    if (textEditingValue.text == '') return list;
-                    return list.where((c) => c.toLowerCase().contains(textEditingValue.text.toLowerCase()));
-                  },
-                  onSelected: (selection) {
-                    _customerController.text = selection;
-                  },
-                  fieldViewBuilder: (context, textEditingController, focusNode, onFieldSubmitted) {
-                    // Keep a reference to the internal controller so we can read value on submit
-                    if (_customerController != textEditingController) {
-                      // dispose our previous controller (created in initState) to avoid leaks
-                      try {
-                        _customerController.removeListener(_customerListener);
-                        _customerController.dispose();
-                      } catch (_) {}
-                      _customerController = textEditingController;
-                    }
-                    // ensure listener is attached
-                    if (!_customerListenerAttached) {
-                      _customerController.addListener(_customerListener);
-                      _customerListenerAttached = true;
-                    }
-                    return TextFormField(
-                      controller: textEditingController,
-                      focusNode: focusNode,
-                      decoration: const InputDecoration(labelText: 'Customer name'),
-                      validator: (v) => (v == null || v.trim().isEmpty) ? 'Enter customer' : null,
-                    );
-                  },
-                ),
-              ),
-              // If this is a new customer (not in existing list) show optional contact fields
-              Builder(builder: (context) {
-                final existing = widget.existingCustomers ?? [];
-                final current = _customerController.text.trim();
-                final isNew = current.isNotEmpty && !existing.any((c) => c.toLowerCase() == current.toLowerCase());
-                if (!isNew) return SizedBox.shrink();
-                return Column(
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 8.0),
-                      child: TextFormField(
-                        controller: _personController,
-                        decoration: const InputDecoration(labelText: 'Contact person (optional)'),
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 8.0),
-                      child: TextFormField(
-                        controller: _phoneController,
-                        keyboardType: TextInputType.phone,
-                        decoration: const InputDecoration(labelText: 'Phone (optional)'),
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 8.0),
-                      child: TextFormField(
-                        controller: _addressController,
-                        decoration: const InputDecoration(labelText: 'Address (optional)'),
-                        maxLines: 2,
-                      ),
-                    ),
-                  ],
-                );
-              }),
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8.0),
-                child: DropdownButtonFormField<Product>(
-                  decoration: const InputDecoration(labelText: 'Product'),
-                  items: widget.products
-                      .map((p) => DropdownMenuItem(value: p, child: Text('${p.name} (${p.unitPrice.toStringAsFixed(2)})')))
-                      .toList(),
-                  onChanged: (v) => setState(() {
-                        _selected = v;
-                        // update paid based on current method
-                        if (_method == PaymentMethod.cash) {
-                          _paid = _total;
-                        } else {
-                          _paid = _paid.clamp(0, _total);
-                        }
-                        _paidController.text = _paid.toStringAsFixed(2);
-                      }),
-                  validator: (v) => (v == null) ? 'Choose product' : null,
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8.0),
-                child: TextFormField(
-                  controller: _quantity,
-                  decoration: const InputDecoration(labelText: 'Quantity'),
-                  keyboardType: TextInputType.number,
-                  onChanged: (_) => setState(() {
-                        // when qty changes, update paid amount for cash payments
-                        if (_method == PaymentMethod.cash) {
-                          _paid = _total;
-                        } else {
-                          _paid = _paid.clamp(0, _total);
-                        }
-                        _paidController.text = _paid.toStringAsFixed(2);
-                      }),
-                  validator: (v) {
-                    if (v == null || v.trim().isEmpty) return 'Enter qty';
-                    final val = int.tryParse(v.trim());
-                    if (val == null || val <= 0) return 'Enter valid qty';
-                    return null;
-                  },
-                ),
-              ),
-              const SizedBox(height: 12),
-              Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                Text('Total: ${_total.toStringAsFixed(2)}'),
-                Text('Paid: ${_paid.toStringAsFixed(2)}'),
-              ]),
-              const SizedBox(height: 12),
-              // Payment input: for Cash, force full-paid and show numeric readonly; for Invoice allow numeric input
-              if (_method == PaymentMethod.cash)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+    return SafeArea(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.92),
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: EdgeInsets.only(
+                bottom: MediaQuery.of(context).viewInsets.bottom,
+                left: 16,
+                right: 16,
+                top: 16),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
                     children: [
-                      Text('Paid (Cash - full payment)'),
-                      SizedBox(height: 8),
-                      TextFormField(
-                        controller: _paidController,
-                        readOnly: true,
-                        decoration: InputDecoration(
-                          prefixText: '₹ ',
-                          border: OutlineInputBorder(),
+                      const Expanded(
+                          child: Text('Take Order',
+                              style: TextStyle(
+                                  fontSize: 20, fontWeight: FontWeight.bold))),
+                      ElevatedButton(
+                        onPressed: _addItem,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.redAccent,
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 14),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8)),
+                        ),
+                        child: const Icon(Icons.add, size: 30),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  _buildCustomerSection(),
+                  const SizedBox(height: 16),
+                  Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text('Products',
+                          style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey[700],
+                              fontWeight: FontWeight.w600))),
+                  const SizedBox(height: 8),
+                  ListView.builder(
+                    itemCount: _items.length,
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemBuilder: (ctx, idx) => _buildItemRow(idx),
+                  ),
+                  const SizedBox(height: 16),
+                  // Payment + Paid Amount
+                  Row(
+                    children: [
+                      Expanded(
+                        child: DropdownButtonFormField<PaymentMethod>(
+                          value: _paymentMethod,
+                          decoration: const InputDecoration(
+                              labelText: 'Payment Method',
+                              border: OutlineInputBorder()),
+                          items: PaymentMethod.values
+                              .where((pm) =>
+                                  pm == PaymentMethod.cash ||
+                                  pm == PaymentMethod.qr ||
+                                  pm == PaymentMethod.invoice)
+                              .map((pm) => DropdownMenuItem(
+                                  value: pm,
+                                  child: Text(
+                                      pm.toString().split('.').last.toUpperCase())))
+                              .toList(),
+                          onChanged: (v) {
+                            setState(() {
+                              _paymentMethod = v ?? PaymentMethod.cash;
+                              _performRecalc(); // auto update paid for QR/Cash/Invoice
+                            });
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: TextFormField(
+                          controller: _paidController,
+                          keyboardType:
+                              const TextInputType.numberWithOptions(decimal: true),
+                          decoration: const InputDecoration(
+                              labelText: 'Paid Amount', prefixText: '₹', border: OutlineInputBorder()),
+                          readOnly: _paymentMethod == PaymentMethod.qr,
+                          validator: (v) {
+                            final paid = double.tryParse(v ?? '');
+                            if (paid == null || paid < 0) return 'Invalid';
+                            return null;
+                          },
                         ),
                       ),
                     ],
                   ),
-                )
-              else
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  const SizedBox(height: 8),
+                  TextFormField(
+                    controller: _noteController,
+                    decoration: const InputDecoration(
+                        labelText: 'Note (optional)', border: OutlineInputBorder()),
+                    maxLines: 2,
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
                     children: [
-                      Text('Paid (Invoice - partial allowed)'),
-                      SizedBox(height: 8),
-                      TextFormField(
-                        controller: _paidController,
-                        keyboardType: TextInputType.numberWithOptions(decimal: true),
-                        decoration: InputDecoration(
-                          prefixText: '₹ ',
-                          hintText: 'Enter paid amount',
-                          border: OutlineInputBorder(),
-                        ),
-                        onChanged: (val) {
-                          final parsed = double.tryParse(val) ?? 0;
-                          setState(() {
-                            _paid = parsed.clamp(0, _total);
-                          });
-                        },
-                      ),
+                      Text('Order Total:',
+                          style: TextStyle(
+                              fontWeight: FontWeight.bold, color: Colors.grey[800])),
+                      const SizedBox(width: 8),
+                      Text('₹${_total.toStringAsFixed(2)}',
+                          style: const TextStyle(
+                              fontWeight: FontWeight.bold, fontSize: 16)),
+                      const Spacer(),
+                      OutlinedButton(
+                          onPressed: () => Navigator.of(context).pop(),
+                          child: const Text('Cancel')),
+                      const SizedBox(width: 12),
+                      ElevatedButton(
+                          onPressed: _submit,
+                          child: const Text('Save Order'),
+                          style: ElevatedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 20, vertical: 14))),
                     ],
                   ),
-                ),
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8.0),
-                child: DropdownButtonFormField<PaymentMethod>(
-                  value: _method,
-                  decoration: const InputDecoration(labelText: 'Payment method'),
-                  items: PaymentMethod.values
-                      .map((m) => DropdownMenuItem(value: m, child: Text(m.toString().split('.').last.toUpperCase())))
-                      .toList(),
-                  onChanged: (v) => setState(() {
-                        _method = v ?? PaymentMethod.cash;
-                        // If cash selected, default paid to total; otherwise clamp paid to total
-                        if (_method == PaymentMethod.cash) {
-                          _paid = _total;
-                        } else {
-                          _paid = _paid.clamp(0, _total);
-                        }
-                        _paidController.text = _paid.toStringAsFixed(2);
-                      }),
-                ),
+                  const SizedBox(height: 16),
+                ],
               ),
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8.0),
-                child: TextFormField(
-                  controller: _note,
-                  decoration: const InputDecoration(labelText: 'Note (optional)'),
-                ),
-              ),
-              const SizedBox(height: 12),
-              Row(mainAxisAlignment: MainAxisAlignment.end, children: [
-                TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
-                const SizedBox(width: 8),
-                ElevatedButton(onPressed: _submit, child: const Text('Save')),
-              ]),
-            ]),
-          )
-        ]),
+            ),
+          ),
+        ),
       ),
     );
   }

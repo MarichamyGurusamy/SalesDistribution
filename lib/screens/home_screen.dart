@@ -40,17 +40,34 @@ class _HomeScreenState extends State<HomeScreen> {
 
   int get _visitsToday {
     final today = DateTime.now();
-    return _visitsDemo.where((v) => v.date.year == today.year && v.date.month == today.month && v.date.day == today.day).length;
+    return _visitsDemo
+        .where((v) =>
+            v.date.year == today.year &&
+            v.date.month == today.month &&
+            v.date.day == today.day)
+        .length;
   }
 
   int get _visitsWithOrdersToday {
     final today = DateTime.now();
-    return _visitsDemo.where((v) => v.hadOrder && v.date.year == today.year && v.date.month == today.month && v.date.day == today.day).length;
+    return _visitsDemo
+        .where((v) =>
+            v.hadOrder &&
+            v.date.year == today.year &&
+            v.date.month == today.month &&
+            v.date.day == today.day)
+        .length;
   }
 
   int get _visitsWithoutOrdersToday {
     final today = DateTime.now();
-    return _visitsDemo.where((v) => !v.hadOrder && v.date.year == today.year && v.date.month == today.month && v.date.day == today.day).length;
+    return _visitsDemo
+        .where((v) =>
+            !v.hadOrder &&
+            v.date.year == today.year &&
+            v.date.month == today.month &&
+            v.date.day == today.day)
+        .length;
   }
 
   @override
@@ -59,11 +76,7 @@ class _HomeScreenState extends State<HomeScreen> {
       appBar: AppBar(
         title: Row(
           children: [
-            JanaMasalaLogo(
-              size: 32,
-              showText: false,
-              logoColor: Colors.white,
-            ),
+            JanaMasalaLogo(size: 32, showText: false, logoColor: Colors.white),
             SizedBox(width: 12),
             Text('Welcome ${salesman ?? "Salesman"}'),
           ],
@@ -81,19 +94,19 @@ class _HomeScreenState extends State<HomeScreen> {
             // Hero summary card
             Container(
               width: double.infinity,
-              decoration: BoxDecoration(
+              decoration: const BoxDecoration(
                 gradient: LinearGradient(
                   colors: [Color(0xFFE23744), Color(0xFFFFA502)],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
               ),
-              padding: EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    'Today\'s Summary',
+                  const Text(
+                    "Today's Summary",
                     style: TextStyle(
                       fontSize: 28,
                       fontWeight: FontWeight.bold,
@@ -101,7 +114,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       letterSpacing: 0.5,
                     ),
                   ),
-                  SizedBox(height: 24),
+                  const SizedBox(height: 24),
                   Row(
                     children: [
                       Expanded(
@@ -136,15 +149,15 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
             Padding(
-              padding: EdgeInsets.all(24),
+              padding: const EdgeInsets.all(24),
               child: Column(
                 children: [
-                  // Action buttons grid (responsive 2x2 on narrow screens)
+                  // Action buttons grid (responsive)
                   LayoutBuilder(builder: (context, constraints) {
                     final crossCount = constraints.maxWidth < 700 ? 2 : 4;
                     return GridView(
                       shrinkWrap: true,
-                      physics: NeverScrollableScrollPhysics(),
+                      physics: const NeverScrollableScrollPhysics(),
                       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                         crossAxisCount: crossCount,
                         crossAxisSpacing: 16,
@@ -155,38 +168,53 @@ class _HomeScreenState extends State<HomeScreen> {
                         _ActionCard(
                           title: 'Products',
                           icon: Icons.inventory_2,
-                          color: Color(0xFFE23744),
+                          color: const Color(0xFFE23744),
                           onTap: () async {
-                            await Navigator.pushNamed(context, '/products', arguments: _productsDemo);
+                            await Navigator.pushNamed(context, '/products',
+                                arguments: _productsDemo);
                             setState(() {});
                           },
                         ),
                         _ActionCard(
                           title: 'Orders',
                           icon: Icons.receipt_long,
-                          color: Color(0xFFFFA502),
+                          color: const Color(0xFFFFA502),
                           onTap: () async {
-                            await Navigator.pushNamed(context, '/orders', arguments: {'products': _productsDemo, 'orders': _ordersDemo, 'visits': _visitsDemo});
+                            await Navigator.pushNamed(context, '/orders',
+                                arguments: {
+                                  'products': _productsDemo,
+                                  'orders': _ordersDemo,
+                                  'visits': _visitsDemo
+                                });
                             setState(() {});
                           },
                         ),
                         _ActionCard(
                           title: 'Customers',
                           icon: Icons.people,
-                          color: Color(0xFF6A1B9A),
+                          color: const Color(0xFF6A1B9A),
                           onTap: () async {
-                            await Navigator.pushNamed(context, '/customers', arguments: {'orders': _ordersDemo});
+                            await Navigator.pushNamed(context, '/customers',
+                                arguments: {'orders': _ordersDemo});
                             setState(() {});
                           },
                         ),
                         _ActionCard(
                           title: 'Visits',
                           icon: Icons.storefront,
-                          color: Color(0xFF00796B),
+                          color: const Color(0xFF00796B),
                           onTap: () async {
                             await Navigator.push(
                               context,
-                              MaterialPageRoute(builder: (_) => VisitsScreen(visits: _visitsDemo, existingShops: _ordersDemo.map((o) => o.customer).toSet().toList())),
+                              MaterialPageRoute(
+                                builder: (_) => VisitsScreen(
+                                  visits: _visitsDemo,
+                                  existingShops: _ordersDemo
+                                      .map((o) => o.customer)
+                                      .toSet()
+                                      .toList(),
+                                ),
+                              ),
                             );
                             setState(() {});
                           },
@@ -194,14 +222,14 @@ class _HomeScreenState extends State<HomeScreen> {
                       ],
                     );
                   }),
-                  SizedBox(height: 24),
+                  const SizedBox(height: 24),
                   // Cash settlement section
                   if (_cashOrderCount > 0)
                     Container(
                       width: double.infinity,
-                      padding: EdgeInsets.all(16),
+                      padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        gradient: LinearGradient(
+                        gradient: const LinearGradient(
                           colors: [Color(0xFFFFA502), Color(0xFFFF8C00)],
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
@@ -225,86 +253,89 @@ class _HomeScreenState extends State<HomeScreen> {
                                       fontWeight: FontWeight.w500,
                                     ),
                                   ),
-                                  SizedBox(height: 4),
+                                  const SizedBox(height: 4),
                                   Text(
-                                    '₹${_totalCash.toStringAsFixed(2)}',
-                                    style: TextStyle(
+                                    '₹${_totalCash.toStringAsFixed(0)}',
+                                    style: const TextStyle(
                                       fontSize: 28,
                                       fontWeight: FontWeight.bold,
                                       color: Colors.white,
                                     ),
                                   ),
-                                  SizedBox(height: 4),
+                                  const SizedBox(height: 4),
                                   Text(
                                     '$_cashOrderCount cash order${_cashOrderCount > 1 ? "s" : ""}',
-                                    style: TextStyle(
+                                    style: const TextStyle(
                                       fontSize: 12,
                                       color: Colors.white70,
                                     ),
                                   ),
                                 ],
                               ),
-                              Icon(Icons.payments, size: 56, color: Colors.white30),
+                              const Icon(Icons.payments, size: 56, color: Colors.white30),
                             ],
                           ),
-                          SizedBox(height: 16),
+                          const SizedBox(height: 16),
                           SizedBox(
                             width: double.infinity,
                             child: ElevatedButton.icon(
                               onPressed: _showSettlementDialog,
-                              icon: Icon(Icons.check_circle, size: 18),
-                              label: Text('Settle Cash', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                              icon: const Icon(Icons.check_circle, size: 18),
+                              label: const Text('Settle Cash',
+                                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: Colors.white,
                                 foregroundColor: Color(0xFFFFA502),
-                                padding: EdgeInsets.symmetric(vertical: 12),
+                                padding: const EdgeInsets.symmetric(vertical: 12),
                               ),
                             ),
                           ),
                         ],
                       ),
                     ),
-                  SizedBox(height: 24),
+                  const SizedBox(height: 24),
                   // Export button
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton.icon(
                       onPressed: () async {
                         if (_ordersDemo.isEmpty) {
-                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No orders to export')));
+                          ScaffoldMessenger.of(context)
+                              .showSnackBar(const SnackBar(content: Text('No orders to export')));
                           return;
                         }
                         try {
                           final result = await ExportService.exportOrdersCsv(_ordersDemo);
                           ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('✓ Exported: $result')));
                         } catch (e) {
-                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('✗ Export failed: ${e.toString()}')));
+                          ScaffoldMessenger.of(context)
+                              .showSnackBar(SnackBar(content: Text('✗ Export failed: ${e.toString()}')));
                         }
                       },
-                      icon: Icon(Icons.download, size: 20),
-                      label: Text('Export Reports', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                      icon: const Icon(Icons.download, size: 20),
+                      label: const Text('Export Reports', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                       style: ElevatedButton.styleFrom(
-                        padding: EdgeInsets.symmetric(vertical: 16),
+                        padding: const EdgeInsets.symmetric(vertical: 16),
                         backgroundColor: Color(0xFFE23744),
                       ),
                     ),
                   ),
-                  SizedBox(height: 24),
+                  const SizedBox(height: 24),
                   // Info box
                   Container(
                     width: double.infinity,
-                    padding: EdgeInsets.all(16),
+                    padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
                       color: Colors.grey[100],
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(color: Colors.grey[300]!, width: 2),
                     ),
-                    child: Text(
+                    child: const Text(
                       'Manage your sales efficiently.\nAdd products and track orders.',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 14,
-                        color: Colors.grey[700],
+                        color: Colors.grey,
                         fontWeight: FontWeight.w500,
                       ),
                     ),
@@ -326,7 +357,7 @@ class _HomeScreenState extends State<HomeScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: Row(
-          children: [
+          children: const [
             Icon(Icons.check_circle, color: Colors.green, size: 28),
             SizedBox(width: 12),
             Text('Cash Settlement', style: TextStyle(fontWeight: FontWeight.bold)),
@@ -337,65 +368,68 @@ class _HomeScreenState extends State<HomeScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              SizedBox(height: 16),
+              const SizedBox(height: 16),
               Container(
                 width: double.infinity,
-                padding: EdgeInsets.all(16),
+                padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: Color(0xFFFFA502).withOpacity(0.1),
+                  color: const Color(0xFFFFA502).withOpacity(0.1),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Color(0xFFFFA502), width: 2),
+                  border: Border.all(color: const Color(0xFFFFA502), width: 2),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
+                    const Text(
                       'JANA MASALA - Settlement Summary',
                       style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFFE23744)),
                     ),
-                    SizedBox(height: 12),
+                    const SizedBox(height: 12),
                     _SettlementRow('Already Collected', '₹${settlement.totalCollected.toStringAsFixed(2)}', Colors.green),
-                    SizedBox(height: 8),
+                    const SizedBox(height: 8),
                     _SettlementRow('Total To Settle', '₹${settlement.totalExpected.toStringAsFixed(2)}', Colors.orange),
-                    SizedBox(height: 8),
+                    const SizedBox(height: 8),
                     _SettlementRow('Cash Orders', '${settlement.orderCount}', Colors.blue),
-                    SizedBox(height: 8),
+                    const SizedBox(height: 8),
                     _SettlementRow('Settlement Date', settlement.date.toString().split(' ')[0], Colors.grey[600]!),
-                    SizedBox(height: 8),
-                    Divider(color: Colors.grey[300]),
-                    SizedBox(height: 8),
-                    Text(
+                    const SizedBox(height: 8),
+                    const Divider(color: Colors.grey),
+                    const SizedBox(height: 8),
+                    const Text(
                       'Orders Included:',
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey[700]),
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey),
                     ),
-                    SizedBox(height: 8),
-                    ...cashOrders.map((o) => Padding(
-                      padding: EdgeInsets.only(bottom: 8),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Expanded(
-                            child: Text(
-                              '${o.customer} - ${o.product.name}',
-                              style: TextStyle(fontSize: 12, color: Colors.grey[700]),
-                              overflow: TextOverflow.ellipsis,
+                    const SizedBox(height: 8),
+                    ...cashOrders.map((o) {
+                      final firstItem = o.items.isNotEmpty ? o.items.first : null;
+                      final productLabel = firstItem?.product?.name ?? firstItem?.productId ?? o.product?.name ?? 'Unknown product';
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(
+                              child: Text(
+                                '${o.customer} - $productLabel',
+                                style: const TextStyle(fontSize: 12, color: Colors.grey),
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
-                          ),
-                          // show paid / total so partial payments are visible
-                          Text(
-                            '₹${o.paidAmount.toStringAsFixed(2)} / ₹${o.total.toStringAsFixed(2)}',
-                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey[800]),
-                          ),
-                        ],
-                      ),
-                    )),
+                            Text(
+                              '₹${o.paidAmount.toStringAsFixed(2)} / ₹${o.total.toStringAsFixed(2)}',
+                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.black87),
+                            ),
+                          ],
+                        ),
+                      );
+                    }),
                   ],
                 ),
               ),
-              SizedBox(height: 16),
-              Text(
+              const SizedBox(height: 16),
+              const Text(
                 'Confirming will mark all cash payments as settled for today (partial payments included).',
-                style: TextStyle(fontSize: 12, color: Colors.grey[600], fontStyle: FontStyle.italic),
+                style: TextStyle(fontSize: 12, color: Colors.grey, fontStyle: FontStyle.italic),
               ),
             ],
           ),
@@ -403,7 +437,7 @@ class _HomeScreenState extends State<HomeScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text('Cancel', style: TextStyle(color: Colors.grey[600])),
+            child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
           ),
           ElevatedButton.icon(
             onPressed: () {
@@ -414,15 +448,15 @@ class _HomeScreenState extends State<HomeScreen> {
                 SnackBar(
                   content: Text('✓ Settlement confirmed! Settled: ₹${settlement.totalExpected.toStringAsFixed(2)}'),
                   backgroundColor: Colors.green,
-                  duration: Duration(seconds: 3),
+                  duration: const Duration(seconds: 3),
                 ),
               );
             },
-            icon: Icon(Icons.done_all, size: 18),
-            label: Text('Confirm Settlement'),
+            icon: const Icon(Icons.done_all, size: 18),
+            label: const Text('Confirm Settlement'),
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.green,
-              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             ),
           ),
         ],
@@ -434,14 +468,8 @@ class _HomeScreenState extends State<HomeScreen> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(
-          label,
-          style: TextStyle(fontSize: 12, color: Colors.grey[700]),
-        ),
-        Text(
-          value,
-          style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: color),
-        ),
+        Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+        Text(value, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: color)),
       ],
     );
   }
@@ -453,7 +481,7 @@ class _HomeScreenState extends State<HomeScreen> {
     required Color color,
   }) {
     return Container(
-      padding: EdgeInsets.all(16),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white10,
         borderRadius: BorderRadius.circular(12),
@@ -462,16 +490,10 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Column(
         children: [
           Icon(icon, color: color, size: 32),
-          SizedBox(height: 8),
-          Text(
-            label,
-            style: TextStyle(fontSize: 12, color: Colors.white70, fontWeight: FontWeight.w500),
-          ),
-          SizedBox(height: 8),
-          Text(
-            amount.toStringAsFixed(2),
-            style: TextStyle(fontSize: 20, color: Colors.white, fontWeight: FontWeight.bold),
-          ),
+          const SizedBox(height: 8),
+          Text(label, style: const TextStyle(fontSize: 12, color: Colors.white70, fontWeight: FontWeight.w500)),
+          const SizedBox(height: 8),
+          Text(amount.toStringAsFixed(2), style: const TextStyle(fontSize: 20, color: Colors.white, fontWeight: FontWeight.bold)),
         ],
       ),
     );
@@ -486,33 +508,16 @@ class _HomeScreenState extends State<HomeScreen> {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: EdgeInsets.all(20),
+        padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.grey[300]!,
-              blurRadius: 8,
-              offset: Offset(0, 4),
-            ),
-          ],
+          boxShadow: [BoxShadow(color: Colors.grey[300]!, blurRadius: 8, offset: const Offset(0, 4))],
           border: Border.all(color: color.withOpacity(0.3), width: 2),
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, color: color, size: 48),
-            SizedBox(height: 12),
-            Text(
-              title,
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: Colors.grey[800],
-              ),
-            ),
-          ],
+          children: [Icon(icon, color: color, size: 48), const SizedBox(height: 12), Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.grey))],
         ),
       ),
     );
