@@ -6,15 +6,14 @@ class SettlementService {
   static final List<Settlement> _settlementHistory = [];
 
   // Get settlement history
-  static List<Settlement> getSettlementHistory() => _settlementHistory;
+  static List<Settlement> getSettlementHistory() => List.unmodifiable(_settlementHistory);
 
-  // Calculate total cash to be settled (all CASH payment orders that are NOT settled)
+  // Calculate total cash to be settled (sum of order totals for unsettled CASH orders)
+  // (this includes partial payments by adding pending + paid when needed since total is full order value)
   static double calculateDailyCash(List<Order> orders) {
-    // Sum the total order value for unsettled CASH orders so partial payments
-    // are included in the final settlement calculation (paid + pending).
     return orders
-      .where((o) => o.paymentMethod == PaymentMethod.cash && !o.isSettled)
-      .fold(0.0, (sum, o) => sum + o.total);
+        .where((o) => o.paymentMethod == PaymentMethod.cash && !o.isSettled)
+        .fold(0.0, (sum, o) => sum + o.total);
   }
 
   // Get count of cash orders (not yet settled)
@@ -22,35 +21,31 @@ class SettlementService {
     return orders.where((o) => o.paymentMethod == PaymentMethod.cash && !o.isSettled).length;
   }
 
-  // Create settlement record
+  // Create settlement record (includes unsettled CASH orders)
   static Settlement createSettlement(List<Order> orders) {
-    // For cash settlement, only include unsettled CASH orders
     final cashOrders = orders.where((o) => o.paymentMethod == PaymentMethod.cash && !o.isSettled).toList();
-    // totalExpected is the sum of order totals for included cash orders
+
     final totalExpected = cashOrders.fold(0.0, (s, o) => s + o.total);
-    // totalCollected is the sum of amounts already collected (partial/full)
     final totalCollected = cashOrders.fold(0.0, (s, o) => s + o.paidAmount);
+    final count = cashOrders.length;
 
     return Settlement(
       id: const Uuid().v4(),
       date: DateTime.now(),
       totalCollected: totalCollected,
       totalExpected: totalExpected,
-      orderCount: cashOrders.length,
+      orderCount: count,
     );
   }
 
-  // Mark cash orders as settled (set isSettled flag to true)
+  // Mark cash orders as settled (set isSettled flag and mark paidAmount = total)
   static void markOrdersSettled(List<Order> orders, Settlement settlement) {
-    // Mark unsettled CASH orders as settled and clear their pending by setting paidAmount = total
     final cashOrders = orders.where((o) => o.paymentMethod == PaymentMethod.cash && !o.isSettled).toList();
     for (final o in cashOrders) {
-      // ensure the cash order is fully paid when settling cash
       o.paidAmount = o.total;
       o.isSettled = true;
     }
-    
-    // Add settlement to history
+
     _settlementHistory.add(settlement);
   }
 
@@ -64,13 +59,12 @@ class SettlementService {
     }).toList();
   }
 
-  // Get total settled today
+  // Get total settled today (sum of collected amounts from today's settlements)
   static double getTotalSettledToday() {
-    // Sum collected amounts from today's settlements
     return getTodaySettlements().fold(0.0, (sum, s) => sum + s.totalCollected);
   }
 
-  // Calculate total invoice due (sum of pending for invoice orders)
+  // Calculate total invoice due (sum of pending for invoice orders that are unsettled)
   static double calculateInvoiceDue(List<Order> orders) {
     return orders
         .where((o) => o.paymentMethod == PaymentMethod.invoice && !o.isSettled)
@@ -82,4 +76,3 @@ class SettlementService {
     return orders.where((o) => o.paymentMethod == PaymentMethod.invoice && o.pending > 0 && !o.isSettled).length;
   }
 }
-
