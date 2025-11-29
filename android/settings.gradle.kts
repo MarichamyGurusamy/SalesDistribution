@@ -15,12 +15,25 @@ pluginManagement {
         mavenCentral()
         gradlePluginPortal()
     }
+
+    resolutionStrategy {
+        eachPlugin {
+            if (requested.id.id == "com.android.application") {
+                // Update Android Gradle Plugin (AGP)
+                useVersion("8.6.0") 
+            }
+            if (requested.id.id == "org.jetbrains.kotlin.android") {
+                // Update Kotlin Gradle Plugin (KGP)
+                useVersion("2.1.0")
+            }
+        }
+    }
 }
 
 plugins {
     id("dev.flutter.flutter-plugin-loader") version "1.0.0"
-    id("com.android.application") version "8.11.1" apply false
-    id("org.jetbrains.kotlin.android") version "2.2.20" apply false
+    id("com.android.application") apply false
+    id("org.jetbrains.kotlin.android") apply false
 }
 
 include(":app")

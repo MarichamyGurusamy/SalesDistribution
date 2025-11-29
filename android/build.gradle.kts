@@ -1,3 +1,8 @@
+plugins {
+    id("com.android.application") apply false 
+    id("org.jetbrains.kotlin.android") apply false
+}
+
 allprojects {
     repositories {
         google()
@@ -14,6 +19,14 @@ rootProject.layout.buildDirectory.value(newBuildDir)
 subprojects {
     val newSubprojectBuildDir: Directory = newBuildDir.dir(project.name)
     project.layout.buildDirectory.value(newSubprojectBuildDir)
+}
+
+subprojects {
+    tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+        kotlinOptions {
+            freeCompilerArgs += "-Xno-old-enforce-fqn-base-mapping"
+        }
+    }
 }
 subprojects {
     project.evaluationDependsOn(":app")

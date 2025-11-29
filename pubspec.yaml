@@ -16,7 +16,7 @@ dependencies:
   uuid: ^4.0.0
   # qr_flutter: ^4.0.0  # removed temporarily
   # intl: ^0.17.0      # removed temporarily
-  shared_preferences: ^2.2.2
+  shared_preferences: ^2.2.0
 
 dev_dependencies:
   flutter_test:
